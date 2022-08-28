@@ -25,7 +25,7 @@ KernelStack=`grep -ie 'KernelStack' $MEMINFO | cut -d' ' -f2- | tr -d "[A-Z][a-z
 PageTables=`grep -ie 'PageTables' $MEMINFO | cut -d' ' -f2- | tr -d "[A-Z][a-z] \r"`
 
 if [ -z $PageTables ] ;then
-	PageTables=0 32
+	PageTables=0
 fi
 
 VmallocUsed=`grep -ie 'VmallocUsed' $MEMINFO | cut -d' ' -f2- | tr -d "[A-Z][a-z] \r"`
