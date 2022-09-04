@@ -1,0 +1,138 @@
+# Author: Long Li <lonuxli.64@gmail.com> 
+
+#bin/bash
+
+#color define
+S_COLOR='\e[1;33m'
+E_COLOR='\e[1;31m'
+I_COLOR='\e[1;34m'
+L_COLOR='\e[1;36m'
+RES='\E[0m'
+
+#Add spaces to the string to make one option per line when selecting
+chgexit='[EXIT <-_->]                                                                             '
+gotoup='[Go up <<<<]'
+sshvm='SSH Login'
+killvm='Close VM'
+moreinfo='MoreInfo'
+flush='[Update VM]'
+
+fun_getvm() {
+	unset lines
+	unset types
+	unset ips
+	unset uptime
+	unset status
+	readarray -t lines < <(ps ux | grep qemu-system | grep -v grep)
+	count=${#lines[@]}
+	echo -e "${S_COLOR}---------------------------------------------------------------------------"
+	echo -e "You have ${E_COLOR}$count${S_COLOR} virtual machines running >>"
+	printf "%-4s| %-18s| %-10s| %-10s| %-12s|\n" "Num" "Network" "Arch" "PID" "UpTime"
+	for (( i=0; i<$count; i++))
+	do
+		types[$i]=`echo ${lines[i]} | awk -F "system-" '{print $2}' | awk -F " " '{print $1}'`
+		pids[$i]=`echo ${lines[i]} | awk -F " " '{print $2}'`
+		ips[$i]=`echo ${lines[i]} | awk -F "IP=" '{print $2}' | awk -F " " '{print $1}'`
+		uptime[$i]=`ps -o etime -p ${pids[$i]} | grep -v ELAPSED`
+		num="$(( $i + 3 ))"
+		printf "%-4d| %-18s| %-10s| %-10s| %-12s|\n" $num ${ips[$i]} ${types[$i]} ${pids[$i]} ${uptime[$i]}
+	done
+	echo -e "${S_COLOR}---------------------------------------------------------------------------"
+}
+
+fun_vmctrl() {
+	index=$1
+	ping ${ips[$index]} -c 1 -W 1 > /dev/null
+	if [ $? == 0 ] ;then
+		status[$index]="Connect"
+	else
+		status[$index]="Disconn"
+	fi
+	while true;do
+		echo -e "${S_COLOR}---------------------------------------------------------------------------"
+		echo -e "${S_COLOR}The virtual machine that you currently selected >>"
+		printf "%-18s| %-10s| %-10s| %-12s| %-10s|\n" "Network" "Arch" "PID" "UpTime" "Status"
+		printf "%-18s| %-10s| %-10s| %-12s| %-10s|\n" ${ips[$i]} ${types[$i]} ${pids[$i]} ${uptime[$i]} ${status[$index]}
+		echo -e "${S_COLOR}---------------------------------------------------------------------------"
+		echo -e "Plese enter operation number:"
+		select vm in "${chgexit}" "${gotoup}" "${sshvm}" "${killvm}" "${moreinfo}" ;
+		do
+			case $vm in
+				"${chgexit}")
+					echo -e "${RES}"
+					exit
+					;;
+				"${gotoup}")
+					echo -e "${RES}"
+					break 2
+					;;
+				"${sshvm}")
+					if [ ${status[$index]} == "Connect" ] ;then
+						echo -e "SSH ${ips[$index]}......"
+					else
+						echo -e "${E_COLOR}Can't connecting to ${ips[$index]}"
+					fi
+					echo -e "${RES}"
+					break
+					;;
+				"${killvm}")
+					kill -9 ${pids[$index]}
+					echo -e "${E_COLOR}Virtual Machine ${ips[$index]} Closed."
+					echo -e "${RES}"
+					break 2
+					;;
+				"${moreinfo}")
+					#sed以" -"来分隔一行为多行, readarray可以以行来分隔读取到数组
+					readarray -t params < <(echo ${lines[i]} | awk -F "system-" '{print $2}' | sed 's/ -/\n/g')
+					echo -e "${S_COLOR}---------------------------------------------------------------------------"
+					echo -e "Virtual machine options >>"
+					nparams=${#params[@]}
+					for (( i=1; i<$nparams; i++))
+					do
+						echo "-${params[$i]}"
+					done
+					echo -e "${S_COLOR}---------------------------------------------------------------------------"
+					echo -e "${RES}"
+					break
+					;;
+
+				*)
+					break
+					;;
+			esac
+		done
+	done
+}
+
+while true;do
+	fun_getvm
+	echo -e "Plese enter select number:"
+	select vm in "${chgexit}" "${flush}" "${ips[@]}" ;
+	do
+		case $vm in
+			"${chgexit}")
+				echo -e "${RES}"
+				exit
+		;;
+				"${flush}")
+				echo -e "${RES}"
+				break
+		;;
+			*)
+				selectip=$vm 
+				if [ -z $selectip ] ;then
+					break
+				fi
+				for (( i=0; i<$count; i++)) 
+				do
+					if [ ${ips[$i]} = $selectip ] ;then
+						fun_vmctrl $i
+					fi	
+				done
+			break
+		;;
+
+	esac
+	done
+done
+
