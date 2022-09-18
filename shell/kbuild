@@ -1,0 +1,47 @@
+#!/bin/bash
+
+
+# $1=arch $2=cross_compile $3=config $=build thread
+function build_kernel()
+{
+arm:
+	export ARCH=arm
+	export CROSS_COMPILE=arm-linux-gnu-5.5-
+	$(MAKE) -C ../ CROSS_COMPILE=arm-linux-gnu-5.5- ARCH=arm vexpress_defconfig
+	#$(MAKE) -C menuconfig
+	$(MAKE) -C ../ CROSS_COMPILE=arm-linux-gnu-5.5- ARCH=arm
+	$(MAKE) -C ../ dtbs CROSS_COMPILE=arm-linux-gnu-5.5- ARCH=arm
+	mkdir -p ./bin/arm
+	cp  ../arch/arm/boot/zImage    ./bin/arm/
+	cp  ../arch/arm/boot/dts/vexpress-v2p-ca9.dtb ./bin/arm
+	cp  ../vmlinux ./bin/arm
+
+arm64:
+	export ARCH=arm
+	export CROSS_COMPILE=aarch64-linux-5.5-
+	$(MAKE) -C ../ CROSS_COMPILE=aarch64-linux-5.5- ARCH=arm64 defconfig
+	$(MAKE) -C ../ CROSS_COMPILE=aarch64-linux-5.5- ARCH=arm64
+	mkdir -p ./bin/arm64
+	cp  ../arch/arm64/boot/Image    ./bin/arm64/
+	cp  ../vmlinux ./bin/arm64
+
+
+x86:
+	$(MAKE) -C ../ CROSS_COMPILE=  i386_defconfig
+	$(MAKE) -C ../ CROSS_COMPILE= 
+	mkdir -p ./bin/x86
+	cp  ../arch/x86/boot/bzImage   ./bin/x86/
+	cp  ../vmlinux ./bin/x86
+
+x86-64:
+	$(MAKE) -C ../ CROSS_COMPILE=  x86_64_defconfig
+	$(MAKE) -C ../ CROSS_COMPILE= 
+	mkdir -p ./bin/x86-64
+	cp  ../arch/x86-64/boot/bzImage   ./bin/x86-64/
+	cp  ../vmlinux ./bin/x86-64
+
+}
+clean:
+	$(MAKE) -C ../ distclean
+
+
