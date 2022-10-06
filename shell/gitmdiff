@@ -1,0 +1,98 @@
+# Author: Long Li <lonuxli.64@gmail.com>
+
+
+#!bin/bash
+
+#color define
+S_COLOR='\e[1;33m'
+E_COLOR='\e[1;31m'
+I_COLOR='\e[1;34m'
+L_COLOR='\e[1;36m'
+RES='\E[0m'
+
+#Add spaces to the string to make one option per line when selecting
+chgexit='[EXIT && <-_->]                                    '
+cidmesg='merge all'
+GITPATH=~/gitwork/kernel/linux
+TMPPATH=~/tmp
+
+
+pushd $GITPATH
+if [ -z $1 ] ;then
+	echo -e "${E_COLOR}usage:$0 commitid ${RES}"
+	exit
+fi
+
+CID_C=`git log --oneline -2 $1 | sed -n 1p | awk -F " " '{print $1}'`
+if [  $? -ne 0 ];then
+	echo -e "${E_COLOR}$0:get commitid fail${RES}"
+fi
+
+CID_P=`git log --oneline -2 $1 | sed -n 2p | awk -F " " '{print $1}'`
+if [  $? -ne 0 ];then
+	echo -e "${E_COLOR}$0:get commitid fail${RES}"
+fi
+
+files=($(git diff --stat $CID_P $CID_C | head -n -1 | awk -F " " '{print $1}'))
+popd
+
+func_selectfile() {
+	while true;do
+		echo -e "${S_COLOR}====================================================================="
+		echo -e "[Merge diffs]Plese enter select number:"
+		select sfile in "${chgexit}" "${cidmesg}" ${files[@]} ;
+		do
+			case $sfile in
+				"${chgexit}")
+				echo -e "${RES}"
+				exit
+			;;
+				"${cidmesg}")
+				break
+			;;
+				*)
+				func_vdiff_file $sfile
+				break
+			;;
+	
+		esac
+	done
+	done
+}
+
+# ctrl+w j 向下移动
+# ctrl+w k 向上移动
+# ctrl+w h 向左移动
+# ctrl+w l  向右移动
+# ctrl+w t 移动到顶端
+# ctrl+w b 移动到底端
+func_vdiff_file() {
+
+	local file=$1
+	local fname=`basename $file`
+	local dname=`dirname $file`
+	local rand=`echo $RANDOM|md5sum|cut -c 1-8`
+	local cprefile=${TMPPATH}/.cpre_${rand}_${fname}
+	local ccurfile=${TMPPATH}/.ccur_${rand}_${fname}
+	local oldfile=${dname}/.old_${fname}
+	local newfile=$file
+
+	pushd $GITPATH
+	git show $CID_P:$file > $cprefile
+	git show $CID_C:$file > $ccurfile
+	popd
+	git show HEAD:$file > $oldfile
+
+	vim -d -O2 $cprefile $ccurfile \
+		-c "split" \
+		-c "wincmd j" \
+		-c "open $oldfile" \
+		-c "wincmd l" \
+		-c "split" \
+		-c "wincmd j" \
+		-c "open $file"
+
+	rm $cprefile $ccurfile $oldfile
+}
+
+func_selectfile
