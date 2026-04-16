@@ -1,0 +1,342 @@
+#!/bin/bash
+
+RED_COLOR='\E[1;31m'
+GREEN_COLOR='\E[1;32m'
+YELLOW_COLOR='\E[1;33m'
+BLUE_COLOR='\E[1;34m'
+PINK_COLOR='\E[1;35m'
+RES='\E[0m'
+
+# ----------------default config------------------------
+# rootfs type
+rtfstype=_ext4
+# cpu arch
+arch=_aarch64
+# -----------------------------------------------------
+
+WORKPATH=~/work/vm
+ip_prefix=192.168.22
+src_image=$WORKPATH/image/Image${arch}
+src_rootfs=$WORKPATH/image/rootfs${arch}${rtfstype}.gz
+fs_path=$WORKPATH/image/vm/fspath
+vm_workdir=$WORKPATH/image/vm
+diskpath=/tmp/ll_disk
+socketx=/tmp/ll_socket
+host_share=$HOME/hostshare
+port_range=5555
+LOG_DIR=$WORKPATH/log/
+cfg_new=""
+ip_tail=120
+disks="scsi-mq"
+disk_size="1G"
+mem="2G"
+cpus=4
+disk_file="notexit"
+
+function usage()
+{
+	cat <<- EOF
+	Usage: $0 [Options]
+	
+	Options:
+	-a	cpu arch
+	-g	rootfs filesystem type(xfs(default), ext4)
+	-i	network ip tail
+	-d	disk type
+	-l	disk size(GB)
+	-m	memory size(GB)
+	-c	cpu nums
+	-z	kernel image
+	-r	rootfs file
+	-s	gdb debug 
+	-b	boot args
+	-f	disk file, not use the original file as disk
+	-x	disk file, use the original file as disk, -l, -d, -f is ignore
+
+	Example:
+	# add no para will start a qemu wit 1 scsi-mq 1G disk, ip is 1922.168.1.110, cpus=2, memory=2G
+	$0
+	# start the qemu with 3 disks, they are scsi-mq, scsi-sq and nvme.
+	$0 -i 122 -d "scsi-mq scsi-sq nvme"
+	# start the qemu with 2 scsi-mq disks, each disk 5G.
+	$0 -i 122 -l 5G -d "scsi-mq scsi-mq"
+	# start the qemu with 6 scsi-mq disks, each disk 1G.
+	$0 -i 122 -l 1G -d "scsi-mq scsi-mq scsi-mq scsi-mq scsi-mq scsi-mq"
+	# start the qemu with 1 scsi-mq disk sand 1 zns, each 4G.
+	$0 -i 122 -l 4G -d "scsi-mq zns"
+EOF
+}
+
+while getopts a:g:i:d:l:f:m:c:z:r:s:b:x:h opt
+do
+	case ${opt} in
+	a)
+		if [ "$OPTARG" = "x86" ] ;then
+			arch="_x86"
+		elif [ "$OPTARG" = "aarch64" ] ;then
+			arch="_aarch64"
+		else
+			echo -e "${RED_COLOR}arch type:$OPTARG not support. ${RES}"
+			exit 1
+		fi
+		src_rootfs=$WORKPATH/image/rootfs${arch}${rtfstype}.gz
+		;;
+	g)
+		if [ "$OPTARG" = "ext4" ] ;then
+			rtfstype="_ext4"
+		elif [ "$OPTARG" = "xfs" ] ;then
+			rtfstype="_xfs"
+		else
+			echo -e "${RED_COLOR}rootfs type:$OPTARG not support. ${RES}"
+			exit 1
+		fi
+		src_rootfs=$WORKPATH/image/rootfs${arch}${rtfstype}.gz
+		;;
+	i)
+		ip_tail="$OPTARG"
+		;;
+	d)
+		disks="$OPTARG"
+		;;
+	l)
+		disk_size="$OPTARG"
+		sizeg=`echo $disk_size | awk -F "G" '{print $1}'`
+		if [ $sizeg -gt 4 ] ;then
+			echo -e "${BLUE_COLOR}The disk file greater than 4G, use disk simulation.${RES}"
+			diskpath=${vm_workdir}/disks
+		fi
+		;;
+	f)
+		if [ ! -f ${OPTARG} ] ;then
+			echo -e "${RED_COLOR}File:${OPTARG} not exit. ${RES}"
+			exit 1
+		fi
+		disk_file="$OPTARG"
+		diskpath=${vm_workdir}/disks
+		;;
+	m)
+		mem="$OPTARG"
+		;;
+	c)
+		cpus="$OPTARG"
+		;;
+	z)
+		src_image="$OPTARG"
+		;;
+	r)
+		src_rootfs="$OPTARG"
+		;;
+	s)
+		prefix="11"
+		gdbdebug="-S -gdb tcp::"
+		gdbdebug="${gdbdebug}${prefix}${ip_tail}"
+		echo -e "${BLUE_COLOR}Listen gdbserver port:${prefix}${ip_tail}, please attach to kernel."
+		echo -e "Use gdb attach:target remote localhost:${prefix}${ip_tail}${RES}"
+		;;
+	b)
+		bootargs="$OPTARG"
+		;;
+	x)
+		if [ ${OPTARG} != "qcow2" ] ;then
+			ori_file="$OPTARG"
+		else
+			echo -e "${BLUE_COLOR}Use qcow format disk."
+			ori_file="qcow2"
+		fi
+		;;
+
+	h|?)
+		usage
+		exit 1
+		;;
+	esac
+done
+
+disk_array=()
+for disk in ${disks}
+do
+	disk_array+=(${disk})
+done
+disk_num=${#disk_array[@]}
+
+
+function orgin_diskcfg()
+{
+	cfg_new="-drive file=${ori_file},if=none,format=raw,id=b_1 -device scsi-hd,drive=b_1,id=d_b_1"
+}
+
+function qcow2_diskcfg()
+{
+	#可以根据实际需求更改
+	#cfg_new="-drive file=$diskpath/disk_${ip_tail}_qcow2,if=none,format=qcow2,id=b_1 -device scsi-hd,drive=b_1,id=d_b_1,logical_block_size=8192,physical_block_size=16384"
+	#cfg_new="-drive file=$diskpath/disk_${ip_tail}_qcow2,if=none,format=qcow2,id=b_1 -device virtio-blk-pci,drive=b_1,id=d_b_1,logical_block_size=8192,physical_block_size=16384"
+	
+	#cfg_new="-drive file=$diskpath/disk_${ip_tail}_qcow2,if=none,format=qcow2,id=b_1 -device nvme,serial=deadbeef,drive=b_1,id=d_b_1,logical_block_size=8192,physical_block_size=16384"
+	cfg_new="-drive file=$diskpath/disk_${ip_tail}_qcow2,if=none,format=qcow2,id=b_1,cache=writeback -device nvme,serial=deadbeef,drive=b_1,id=d_b_1,logical_block_size=4096,physical_block_size=4096"
+	[ $(ls $diskpath/disk_${ip_tail}_qcow2  2>/dev/null | wc -l) -eq 1 ] && return
+	qemu-img create -f qcow2 $diskpath/disk_${ip_tail}_qcow2 1G
+}
+
+function combine_creatfile()
+{
+	[ $(ls $diskpath/disk_${ip_tail}*  2>/dev/null | wc -l) -eq ${disk_num} ] && return
+	rm -f $diskpath/disk_${ip_tail}_*
+	for i in $(seq 1 ${disk_num})
+	do
+		if [ -f ${disk_file} ] ;then
+			cp ${disk_file} ${diskpath}/disk_${ip_tail}_${i}
+		else
+			fallocate -l ${disk_size} ${diskpath}/disk_${ip_tail}_${i}
+		fi
+	done
+}
+
+function combine_diskcfg()
+{
+	scsimqcfg="-drive file=aaaaaa,if=none,format=raw,id=bbbbbb -device scsi-hd,drive=cccccc,id=dddddd"
+	scsisqcfg="-drive file=aaaaaa,if=none,format=raw,id=bbbbbb -device ahci,id=cccccc -device ide-drive,drive=dddddd,bus=eeeeee"
+	nvmecfg="-drive file=aaaaaa,if=none,id=bbbbbb -device nvme,serial=deadbeef,drive=cccccc"
+	znscfg="-device nvme,id=nvme0,serial=deadbeef,zoned.zasl=5 -drive file=aaaaaa,id=nvmezns0,format=raw,if=none -device nvme-ns,drive=nvmezns0,bus=nvme0,nsid=1,logical_block_size=4096,physical_block_size=4096,zoned=true,zoned.zone_size=64M,zoned.zone_capacity=62M,zoned.max_open=16,zoned.max_active=32,uuid=5e40ec5f-eeb6-4317-bc5e-c919796a5f79"
+
+	combine_creatfile
+
+	i=0
+	for disk_type in ${disk_array[@]}
+	do
+		((i++))
+		case ${disk_type} in
+			scsi-mq)
+				tmpcfg=`echo ${scsimqcfg} | sed "s#aaaaaa#${diskpath}/disk_${ip_tail}_${i}#g" | sed "s#bbbbbb#b_${i}#g" \
+				| sed "s#cccccc#b_${i}#g" | sed "s#dddddd#d_b_${i}#g"`
+				;;  
+			scsi-sq)
+				tmpcfg=`echo ${scsisqcfg} | sed "s#aaaaaa#${diskpath}/disk_${ip_tail}_${i}#g" | sed "s#bbbbbb#dd_${i}#g" \
+				| sed "s#cccccc#ahci_${i}#g" | sed "s#dddddd#dd_${i}#g" | sed "s#eeeeee#ahci_${i}.0#g"`
+				;;  
+			nvme)
+				tmpcfg=`echo ${nvmecfg} | sed "s#aaaaaa#${diskpath}/disk_${ip_tail}_${i}#g" | sed "s#bbbbbb#nvm_${i}#g" \
+				| sed "s#cccccc#nvm_${i}#g"`
+				;;  
+			zns)
+				tmpcfg=`echo ${znscfg} | sed "s#aaaaaa#${diskpath}/disk_${ip_tail}_${i}#g"`
+				;;
+			*)  
+				echo "disk type must be scsi-mq/scsi-sq/nvme/zns"
+				exit 1
+				;;  
+		esac
+		cfg_new="${cfg_new} ${tmpcfg}"
+	done
+}
+
+function start_qemu_x86_ext4()
+{
+	`which qemu-kvm || which qemu-system-x86_64` \
+		-enable-kvm -display none \
+		-smp ${cpus} \
+		-m ${mem} \
+		-kernel $vm_workdir/Image_${arch}$ip_tail \
+		-device virtio-scsi-pci \
+		-net nic,model=virtio,macaddr=$mac -net bridge,br=$vm_br \
+		-drive file=$vm_workdir/rootfs${arch}${rtfstype}.gz_$ip_tail,if=none,cache=none,id=root \
+		-device virtio-blk,drive=root,id=d_root \
+		-fsdev local,security_model=passthrough,id=fsdev0,path=${host_share} -device virtio-9p-pci,id=fs0,fsdev=fsdev0,mount_tag=hostshare \
+		${cfg_new} \
+		-append "console=ttyS0 IP=${vm_ip} root=/dev/vda1 rw nokaslr oops=panic panic_on_oops=1 scsi_mod.use_blk_mq=0 acpi=noirq memmap=1G!4G randomize_va_space=0 ${bootargs}" \
+		-qmp tcp:localhost:$port,server,nowait \
+		-monitor unix:${socketx}/socket_${ip_tail},server,nowait \
+		-serial file:$serial_log \
+		-daemonize ${gdbdebug}
+}
+
+function start_qemu_aarch64_ext4()
+{
+	mkdir -p ${fs_path}
+	qemu-system-aarch64  \
+		-machine virt \
+		-cpu cortex-a72 \
+		-smp ${cpus} \
+		-m ${mem} \
+		-kernel $vm_workdir/Image${arch}_$ip_tail \
+		-drive file=$vm_workdir/rootfs${arch}${rtfstype}.gz_$ip_tail,if=virtio,format=raw \
+		-fsdev local,security_model=passthrough,id=fsdev0,path=${host_share} \
+		-device virtio-9p-pci,id=fs0,fsdev=fsdev0,mount_tag=hostshare \
+		-device virtio-scsi-pci \
+		${cfg_new} \
+		-device virtio-net-pci,netdev=net0 \
+		-netdev tap,id=net0,ifname=tap0,script=no,downscript=no \
+		-qmp tcp:localhost:$port,server,nowait \
+		-monitor unix:${socketx}/socket_${ip_tail},server,nowait \
+		-virtfs local,path=${fs_path},mount_tag=modules,security_model=mapped-file \
+		-append "IP=${vm_ip} debug console=ttyAMA0  root=/dev/vda rw nokaslr oops=panic panic_on_oops=1 scsi_mod.use_blk_mq=0 acpi=noirq randomize_va_space=0 ${bootargs}" \
+		-serial file:$serial_log \
+		-daemonize -display none ${gdbdebug}
+}
+
+function start_vm()
+{
+	port=$((${ip_tail}+$port_range))
+	vm_ip="${ip_prefix}.${ip_tail}"
+	serial_log="${LOG_DIR}/vm_t${ip_tail}_d`date +%Y_%m_%d_%H_%M_%S`_$(basename ${src_image}).log"
+	mac=$(printf 'CE:AD:BB:EF:%02X:%02X\n' $((RANDOM%256)) $((RANDOM%256)))
+
+	mkdir -p $socketx
+
+	start_qemu${arch}${rtfstype}
+
+	if [ $? -ne 0 ];then
+		echo "vm start failed"
+		rm -rf $serial_log
+		exit 1
+	fi
+
+	echo -e "${GREEN_COLOR}vm start ${vm_ip}"
+	local time_start=$(date +%s)
+	local time_end
+	local time_cost
+	for i in `seq 60`
+	do
+		echo -en "."
+		ping $vm_ip -c 1 -w 1 >/dev/null 2>&1
+		if [ $? -eq 0 ];then
+			time_cost=$(($(date +%s) - ${time_start}))
+			echo -e "vm start done (ip: ${ip_tail} time: ${time_cost})"
+			kernelinfo=`grep "Linux version" $serial_log | awk -F "Linux version" '{print $2}'`
+			echo -e "vm_${ip_tail}:$kernelinfo"
+			Commandline=`grep "Command line:" $serial_log | awk -F "Command line:" '{print $2}'`
+			echo -e "vm_${ip_tail}:$Commandline"
+			break
+		else
+			continue
+		fi
+	done
+	echo -e "${RES}"
+}
+
+
+function prepare()
+{
+	mkdir -p $vm_workdir $LOG_DIR
+	mkdir -p $diskpath
+
+	# 1.bZimage
+	cp $src_image $vm_workdir/Image${arch}_${ip_tail}
+	
+	# 2.rootfs
+	ls $vm_workdir/rootfs${arch}${rtfstype}.gz_${ip_tail} >/dev/null 2>&1 || \
+		cp $src_rootfs $vm_workdir/rootfs${arch}${rtfstype}.gz_${ip_tail}
+	
+	# 3.disk
+	if [ "${ori_file}X" != "X" ] ;then
+		if [ "${ori_file}" != "qcow2" ] ;then
+			orgin_diskcfg
+		else
+			qcow2_diskcfg
+		fi
+	else
+		combine_diskcfg
+	fi
+}
+
+prepare
+start_vm
