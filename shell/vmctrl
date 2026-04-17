@@ -40,16 +40,16 @@ fun_parse_vms() {
 
 fun_getvm() {
 	fun_parse_vms
-	echo -e "${S_COLOR}---------------------------------------------------------------------------"
-	echo -e "You have ${E_COLOR}$count${S_COLOR} virtual machines running >>"
+	echo -e "${YELLOW_COLOR}---------------------------------------------------------------------------"
+	echo -e "You have ${RED_COLOR}$count${YELLOW_COLOR} virtual machines running >>"
 	printf "%-15s| %-4s| %-10s| %-10s| %-12s| %-4s|\n" "Network" "Sel" "Arch" "PID" "UpTime" "SSH"
 	for (( i=0; i<$count; i++))
 	do
 		num="$(( $i + 4 ))"
-		printf "${L_COLOR}%-15s${S_COLOR}|${L_COLOR} %-4d${S_COLOR}| %-10s| %-10s| %-12s| %-4s|\n" \
+		printf "${CYAN_COLOR}%-15s${YELLOW_COLOR}|${CYAN_COLOR} %-4d${YELLOW_COLOR}| %-10s| %-10s| %-12s| %-4s|\n" \
 			"${ips[$i]}" $num "${types[$i]}" "${pids[$i]}" "${uptime[$i]}" "${sshs[$i]}"
 	done
-	echo -e "${S_COLOR}---------------------------------------------------------------------------"
+	echo -e "${YELLOW_COLOR}---------------------------------------------------------------------------"
 }
 
 fun_getvmtop() {
@@ -62,8 +62,8 @@ fun_getvmtop() {
 		sshs[$i]=`ps ux | grep "ssh " | grep -v grep | grep -v sshpass | grep ${ips[$i]} |wc -l`
 	done
 	printf "\033c" #clear terminal
-	echo -e "${S_COLOR}---------------------------------------------------------------------------"
-	echo -e "You have ${E_COLOR}$count${S_COLOR} virtual machines running >>"
+	echo -e "${YELLOW_COLOR}---------------------------------------------------------------------------"
+	echo -e "You have ${RED_COLOR}$count${YELLOW_COLOR} virtual machines running >>"
 	printf "%-8s| %-15s| %-10s| %-10s| %-12s| %-4s|\n" "Staus" "Network" "Arch" "PID" "UpTime" "SSH"
 	for (( i=0; i<$count; i++))
 	do
@@ -77,7 +77,7 @@ fun_getvmtop() {
 		printf "%-8s| %-15s| %-10s| %-10s| %-12s| %-4d|\n" ${status[$i]} ${ips[$i]} \
 			${types[$i]} ${pids[$i]} ${uptime[$i]} ${sshs[$i]}
 	done
-	echo -e "${S_COLOR}---------------------------------------------------------------------------"
+	echo -e "${YELLOW_COLOR}---------------------------------------------------------------------------"
 }
 
 # 登陆qemu生成vmcore文件
@@ -90,7 +90,7 @@ fun_savecore() {
 	local tailip=`echo ${ips[$index]} | awk -F "." '{print $4}'`
 	local corefile=${CPATH}/qemu_vm_t${tailip}_${datetag}.core
 
-	echo -e "${L_COLOR}Start generate vmcore for ${ips[$index]}......"
+	echo -e "${CYAN_COLOR}Start generate vmcore for ${ips[$index]}......"
 	mkdir -p $tmpdir
 	rm -f $tmpfile
 
@@ -108,10 +108,10 @@ fun_savecore() {
 	if [ $? == 0 ] ;then
 		cp $tmpfile $corefile
 		rm -f $tmpfile
-		echo -e "${L_COLOR}Success generate vmcore: ${I_COLOR}${corefile}"
+		echo -e "${CYAN_COLOR}Success generate vmcore: ${BLUE_COLOR}${corefile}"
 		echo -e "${RES}"
 	else
-		echo -e "${E_COLOR}Failed generate vmcore.${RES}"
+		echo -e "${RED_COLOR}Failed generate vmcore.${RES}"
 	fi
 }
 
@@ -123,10 +123,10 @@ fun_savelog() {
 	local vmlogfile=${CPATH}/qemu_vm_t${tailip}_${datetag}.log
 
 	if [ -z $logfile ] ;then
-		echo -e "${E_COLOR}Virtual machine ${ips[$index]} log ${logfile} not exist."
+		echo -e "${RED_COLOR}Virtual machine ${ips[$index]} log ${logfile} not exist."
 	else
 		cp $logfile $vmlogfile
-		echo -e "${L_COLOR}Success save log: ${I_COLOR}${vmlogfile}"
+		echo -e "${CYAN_COLOR}Success save log: ${BLUE_COLOR}${vmlogfile}"
 	fi
 	echo -e "${RES}"
 }
@@ -148,11 +148,11 @@ fun_linkksnap() {
 		diff $ksdir/$element/bzImage $kimage >> /dev/null
 		if [ $? == 0 ] ;then
 			ln -s $ksdir/$element $vmsnapshot
-			echo -e "${L_COLOR}Success find ksnapshot: ${I_COLOR}$ksdir/$element"
+			echo -e "${CYAN_COLOR}Success find ksnapshot: ${BLUE_COLOR}$ksdir/$element"
 			return 0
 		fi
 	done
-	echo -e "${E_COLOR}Not find ksnapshot"
+	echo -e "${RED_COLOR}Not find ksnapshot"
 	return 1
 }
 
@@ -166,12 +166,12 @@ fun_vmctrl() {
 	fi
 	sshs[$index]=`ps ux | grep "ssh " | grep -v grep | grep -v sshpass | grep ${ips[$index]} |wc -l`
 	while true;do
-		echo -e "${S_COLOR}---------------------------------------------------------------------------"
-		echo -e "${S_COLOR}The virtual machine that you currently selected >>"
+		echo -e "${YELLOW_COLOR}---------------------------------------------------------------------------"
+		echo -e "${YELLOW_COLOR}The virtual machine that you currently selected >>"
 		printf "%-15s| %-10s| %-10s| %-12s| %-10s| %-4s|\n" "Network" "Arch" "PID" "UpTime" "Status" "SSH"
-		printf "${L_COLOR}%-15s${S_COLOR}| %-10s| %-10d| %-12s| %-10s| %-4d|\n" ${ips[$index]} \
+		printf "${CYAN_COLOR}%-15s${YELLOW_COLOR}| %-10s| %-10d| %-12s| %-10s| %-4d|\n" ${ips[$index]} \
 			${types[$index]} ${pids[$index]} ${uptime[$index]} ${status[$index]} ${sshs[$index]}
-		echo -e "${S_COLOR}---------------------------------------------------------------------------"
+		echo -e "${YELLOW_COLOR}---------------------------------------------------------------------------"
 		echo -e "Plese enter operation number:"
 		select vm in "${chgexit}" "${gotoup}" "${sshvm}" "${killvm}" "${moreinfo}" "${vmlog}" "${vmsavelog}" "${vmcore}";
 		do
@@ -190,10 +190,10 @@ fun_vmctrl() {
 						echo -e "${RES}"
 						sshpass -p "root" ssh root@${ips[$index]} -o StrictHostKeyChecking=no
 						if [ $? != 0 ] ;then
-							echo -e "${E_COLOR}SSH login ${ips[$index]} faild."
+							echo -e "${RED_COLOR}SSH login ${ips[$index]} faild."
 						fi
 					else
-						echo -e "${E_COLOR}Can't connecting to ${ips[$index]}"
+						echo -e "${RED_COLOR}Can't connecting to ${ips[$index]}"
 					fi
 					echo -e "${RES}"
 					break
@@ -206,14 +206,14 @@ fun_vmctrl() {
 				"${moreinfo}")
 					#sed以" -"来分隔一行为多行, readarray可以以行来分隔读取到数组
 					readarray -t params < <(echo ${lines[$index]} | awk -F "qemu-" '{print $2}' | sed 's/ -/\n/g')
-					echo -e "${I_COLOR}---------------------------------------------------------------------------"
+					echo -e "${BLUE_COLOR}---------------------------------------------------------------------------"
 					echo -e "Virtual machine options >>"
 					nparams=${#params[@]}
 					for (( i=1; i<$nparams; i++))
 					do
 						echo "-${params[$i]}"
 					done
-					echo -e "${I_COLOR}---------------------------------------------------------------------------"
+					echo -e "${BLUE_COLOR}---------------------------------------------------------------------------"
 					echo -e "${RES}"
 					break
 					;;
@@ -222,7 +222,7 @@ fun_vmctrl() {
 					unset logfile
 					logfile=`echo ${lines[$index]} | awk -F "serial file:" '{print $2}' | awk -F " " '{print $1}'`
 					if [ -z $logfile ] ;then
-						echo -e "${E_COLOR}Virtual machine ${ips[$index]} log ${logfile} not exist."
+						echo -e "${RED_COLOR}Virtual machine ${ips[$index]} log ${logfile} not exist."
 					else
 						less $logfile
 					fi

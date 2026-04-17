@@ -6,14 +6,11 @@
 # ============================================================
 
 # -------- COLOR DEFINITIONS (共用) --------
-S_COLOR='\e[1;33m'           # Yellow
-E_COLOR='\e[1;31m'           # Red
-I_COLOR='\e[1;34m'           # Blue
-L_COLOR='\e[1;36m'           # Cyan
 RED_COLOR='\E[1;31m'         # Red
 GREEN_COLOR='\E[1;32m'       # Green
 YELLOW_COLOR='\E[1;33m'      # Yellow
 BLUE_COLOR='\E[1;34m'        # Blue
+CYAN_COLOR='\E[1;36m'        # Cyan
 PINK_COLOR='\E[1;35m'        # Pink
 RES='\E[0m'                  # Reset
 
