@@ -7,6 +7,7 @@ source $(dirname "$0")/vm_config.sh
 cfg_new=""
 ip_tail=120
 disk_file="notexit"
+src_image=""  # Will be set based on user_image or arch_image
 
 function usage()
 {
@@ -94,7 +95,7 @@ do
 		cpus="$OPTARG"
 		;;
 	z)
-		src_image="$OPTARG"
+		user_image="$OPTARG"
 		;;
 	r)
 		src_rootfs="$OPTARG"
@@ -125,9 +126,52 @@ do
 	esac
 done
 
-# Rebuild src_rootfs after processing arch and rtfstype options
+# Rebuild paths after processing arch and rtfstype options
 src_rootfs=$WORKPATH/image/rootfs${arch}${rtfstype}.gz
-src_image=$WORKPATH/image/Image${arch}
+arch_image=$WORKPATH/image/Image${arch}
+
+# Determine which kernel image to use (priority order):
+# 1. Current kernel source directory
+# 2. user_image (user custom from config)
+# 3. arch_image (architecture default)
+src_image=""
+
+# Check if current directory is a kernel source tree
+if [ -f "./Makefile" ] && [ -d "./arch" ] ;then
+	case ${arch} in
+		_aarch64)
+			kernel_image="./arch/arm64/boot/Image"
+			;;
+		_x86)
+			kernel_image="./arch/x86/boot/bzImage"
+			;;
+		*)
+			kernel_image=""
+			;;
+	esac
+	if [ -f "$kernel_image" ] ;then
+		src_image="$kernel_image"
+	fi
+fi
+
+# Fall back to user_image if not found in current directory
+if [ -z "$src_image" ] && [ -n "$user_image" ] && [ -f "$user_image" ] ;then
+	src_image="$user_image"
+fi
+
+# Fall back to arch_image if not found yet
+if [ -z "$src_image" ] && [ -f "$arch_image" ] ;then
+	src_image="$arch_image"
+fi
+
+# Error if still not found
+if [ -z "$src_image" ] ;then
+	echo -e "${RED_COLOR}Error: Kernel image not found.${RES}"
+	[ -n "$kernel_image" ] && echo -e "  Tried: $kernel_image"
+	[ -n "$user_image" ] && echo -e "  Tried: $user_image"
+	echo -e "  Tried: $arch_image"
+	exit 1
+fi
 
 disk_array=()
 for disk in ${disks}
