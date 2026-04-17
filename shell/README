@@ -1,0 +1,9 @@
+## vm config
+ln -s ~/github/misc-tools/shell/vmmutil ~/bin/vmmutil
+ln -s ~/github/misc-tools/shell/vmctrl ~/bin/vmctrl
+ln -s ~/github/misc-tools/shell/vmstart ~/bin/vmstart
+cp ~/github/misc-tools/shell/vm_config.sh ~/bin
+
+## others config
+ln -s ~/github/misc-tools/shell/tags.sh ~/bin/tags.sh
+

@@ -1,36 +1,11 @@
 #!/bin/bash
 
-RED_COLOR='\E[1;31m'
-GREEN_COLOR='\E[1;32m'
-YELLOW_COLOR='\E[1;33m'
-BLUE_COLOR='\E[1;34m'
-PINK_COLOR='\E[1;35m'
-RES='\E[0m'
+# Source common VM configuration
+source $(dirname "$0")/vm_config.sh
 
-# ----------------default config------------------------
-# rootfs type
-rtfstype=_ext4
-# cpu arch
-arch=_aarch64
-# -----------------------------------------------------
-
-WORKPATH=~/work/vm
-ip_prefix=192.168.22
-src_image=$WORKPATH/image/Image${arch}
-src_rootfs=$WORKPATH/image/rootfs${arch}${rtfstype}.gz
-fs_path=$WORKPATH/image/vm/fspath
-vm_workdir=$WORKPATH/image/vm
-diskpath=/tmp/ll_disk
-socketx=/tmp/ll_socket
-host_share=$HOME/hostshare
-port_range=5555
-LOG_DIR=$WORKPATH/log/
+# vmstart specific configuration
 cfg_new=""
 ip_tail=120
-disks="scsi-mq"
-disk_size="1G"
-mem="2G"
-cpus=4
 disk_file="notexit"
 
 function usage()
