@@ -17,7 +17,7 @@ vmlog='vm log'
 vmtop='[vm top]'
 
 
-fun_getvm() {
+fun_parse_vms() {
 	unset lines
 	unset types
 	unset ips
@@ -27,47 +27,46 @@ fun_getvm() {
 	local i
 	readarray -t lines < <(ps ux | grep ${qemu_prefix} | grep -v grep)
 	count=${#lines[@]}
-	echo -e "${S_COLOR}---------------------------------------------------------------------------"
-	echo -e "You have ${E_COLOR}$count${S_COLOR} virtual machines running >>"
-	printf "%-15s| %-4s| %-10s| %-10s| %-12s| %-4s|\n" "Network" "Sel" "Arch" "PID" "UpTime" "SSH"
 	for (( i=0; i<$count; i++))
 	do
 		types[$i]=`echo "${lines[i]}" | awk -F "system-" '{print $2}' | awk -F " " '{print $1}'`
 		pids[$i]=`echo "${lines[i]}" | awk '{print $2}'`
 		ips[$i]=`echo "${lines[i]}" | awk -F "IP=" '{print $2}' | awk -F " " '{print $1}'`
 		ports[$i]=`echo "${lines[i]}" | awk -F "localhost:" '{print $2}' | awk -F "," '{print $1}'`
-		#uptime[$i]=`ps -o etime -p ${pids[$i]} | grep -v ELAPSED`
 		uptime[$i]="0"
-		#sshs[$i]=`ps ux | grep "ssh " | grep -v grep | grep -v sshpass | grep ${ips[$i]} |wc -l`
 		sshs[$i]="0"
+	done
+}
+
+fun_getvm() {
+	fun_parse_vms
+	echo -e "${S_COLOR}---------------------------------------------------------------------------"
+	echo -e "You have ${E_COLOR}$count${S_COLOR} virtual machines running >>"
+	printf "%-15s| %-4s| %-10s| %-10s| %-12s| %-4s|\n" "Network" "Sel" "Arch" "PID" "UpTime" "SSH"
+	for (( i=0; i<$count; i++))
+	do
 		num="$(( $i + 4 ))"
 		printf "${L_COLOR}%-15s${S_COLOR}|${L_COLOR} %-4d${S_COLOR}| %-10s| %-10s| %-12s| %-4s|\n" \
-			"${ips[$i]}" $num "${types[$i]}" "${pids[$i]}" "${uptime[$i]}" "${sshs[$i]}" 
+			"${ips[$i]}" $num "${types[$i]}" "${pids[$i]}" "${uptime[$i]}" "${sshs[$i]}"
 	done
 	echo -e "${S_COLOR}---------------------------------------------------------------------------"
 }
 
 fun_getvmtop() {
-	unset lines
-	unset types
-	unset ips
-	unset uptime
-	unset status
-	unset sshs
 	local i
-	readarray -t lines < <(ps ux | grep ${qemu_prefix} | grep -v grep)
-	count=${#lines[@]}
+	fun_parse_vms
+	# Re-populate with uptime and ssh counts for top view
+	for (( i=0; i<$count; i++))
+	do
+		uptime[$i]=`ps -o etime -p ${pids[$i]} | grep -v ELAPSED`
+		sshs[$i]=`ps ux | grep "ssh " | grep -v grep | grep -v sshpass | grep ${ips[$i]} |wc -l`
+	done
 	printf "\033c" #clear terminal
 	echo -e "${S_COLOR}---------------------------------------------------------------------------"
 	echo -e "You have ${E_COLOR}$count${S_COLOR} virtual machines running >>"
 	printf "%-8s| %-15s| %-10s| %-10s| %-12s| %-4s|\n" "Staus" "Network" "Arch" "PID" "UpTime" "SSH"
 	for (( i=0; i<$count; i++))
 	do
-		types[$i]=`echo ${lines[i]} | awk -F "system-" '{print $2}' | awk -F " " '{print $1}'`
-		pids[$i]=`echo ${lines[i]} | awk -F " " '{print $2}'`
-		ips[$i]=`echo ${lines[i]} | awk -F "IP=" '{print $2}' | awk -F " " '{print $1}'`
-		uptime[$i]=`ps -o etime -p ${pids[$i]} | grep -v ELAPSED`
-		sshs[i]=`ps ux | grep "ssh " | grep -v grep | grep -v sshpass | grep ${ips[$i]} |wc -l`
 		ping ${ips[$i]} -c 1 -W 1 > /dev/null
 		if [ $? == 0 ] ;then
 			status[$i]="Alive"
@@ -75,9 +74,8 @@ fun_getvmtop() {
 			status[$i]="....."
 			ping ${ips[$i]} -c 1 -W 1 > /dev/null && status[$i]="Alive"
 		fi
-
 		printf "%-8s| %-15s| %-10s| %-10s| %-12s| %-4d|\n" ${status[$i]} ${ips[$i]} \
-			${types[$i]} ${pids[$i]} ${uptime[$i]} ${sshs[$i]} 
+			${types[$i]} ${pids[$i]} ${uptime[$i]} ${sshs[$i]}
 	done
 	echo -e "${S_COLOR}---------------------------------------------------------------------------"
 }
@@ -93,12 +91,8 @@ fun_savecore() {
 	local corefile=${CPATH}/qemu_vm_t${tailip}_${datetag}.core
 
 	echo -e "${L_COLOR}Start generate vmcore for ${ips[$index]}......"
-	if [ ! -d $tmpdir ] ;then
-		mkdir -p $tmpdir
-	fi
-	if [ -f $tmpfile ] ;then
-		rm $tmpfile -f
-	fi
+	mkdir -p $tmpdir
+	rm -f $tmpfile
 
 	{
 		sleep 0.5
@@ -113,9 +107,7 @@ fun_savecore() {
 
 	if [ $? == 0 ] ;then
 		cp $tmpfile $corefile
-		if [ -f $tmpfile ] ;then
-			rm $tmpfile -f
-		fi
+		rm -f $tmpfile
 		echo -e "${L_COLOR}Success generate vmcore: ${I_COLOR}${corefile}"
 		echo -e "${RES}"
 	else
@@ -123,7 +115,7 @@ fun_savecore() {
 	fi
 }
 
-func_savelog() {
+fun_savelog() {
 	local index=$1
 	local datetag=$2
 	local tailip=`echo ${ips[$index]} | awk -F "." '{print $4}'`
@@ -140,7 +132,7 @@ func_savelog() {
 }
 
 # 根据虚拟机的kernel镜像匹配ksnapshot快照
-func_linkksnap() {
+fun_linkksnap() {
 	local index=$1
 	local datetag=$2
 	local tailip=`echo ${ips[$index]} | awk -F "." '{print $4}'`
@@ -237,16 +229,16 @@ fun_vmctrl() {
 					echo -e "${RES}"
 					break
 					;;
-				"${vmsavelog}")	
+				"${vmsavelog}")
 					local datetag=`date '+%Y%m%d_%H%M%S'`
-					func_savelog $index $datetag
+					fun_savelog $index $datetag
 					break
 					;;
 				"${vmcore}")
 					local datetag=`date '+%Y%m%d_%H%M%S'`
 					fun_savecore $index $datetag
-					func_savelog $index $datetag
-					func_linkksnap $index $datetag
+					fun_savelog $index $datetag
+					fun_linkksnap $index $datetag
 					break
 					;;
 		

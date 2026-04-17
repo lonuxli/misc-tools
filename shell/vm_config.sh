@@ -19,7 +19,6 @@ RES='\E[0m'                  # Reset
 
 # -------- NETWORK CONFIGURATION (共用) --------
 ipprefix="192.168.22."
-ip_prefix="192.168.22"
 qemu_prefix="qemu-"
 tailipmin=120
 tailipmax=125
@@ -36,14 +35,13 @@ port_range=5555              # port range base
 # -------- DIRECTORY PATHS (共用) --------
 CPATH=`pwd`
 WORKPATH=~/work/vm
+vm_workdir=$WORKPATH/image/vm
+rootfspath=$vm_workdir
 src_image=$WORKPATH/image/Image${arch}
 src_rootfs=$WORKPATH/image/rootfs${arch}${rtfstype}.gz
-fs_path=$WORKPATH/image/vm/fspath
-vm_workdir=$WORKPATH/image/vm
-rootfspath=$WORKPATH/image/vm
-diskpath=/tmp/ll_disk
-ramdpath=/tmp/ll_disk
-socketx=/tmp/ll_socket
-host_share=$HOME/hostshare
+fs_path=$vm_workdir/fspath
 ksdir=$WORKPATH/image/ksnapshot
 LOG_DIR=$WORKPATH/log/
+diskpath=/tmp/ll_disk
+socketx=/tmp/ll_socket
+host_share=$HOME/hostshare

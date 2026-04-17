@@ -54,7 +54,6 @@ do
 			echo -e "${RED_COLOR}arch type:$OPTARG not support. ${RES}"
 			exit 1
 		fi
-		src_rootfs=$WORKPATH/image/rootfs${arch}${rtfstype}.gz
 		;;
 	g)
 		if [ "$OPTARG" = "ext4" ] ;then
@@ -65,7 +64,6 @@ do
 			echo -e "${RED_COLOR}rootfs type:$OPTARG not support. ${RES}"
 			exit 1
 		fi
-		src_rootfs=$WORKPATH/image/rootfs${arch}${rtfstype}.gz
 		;;
 	i)
 		ip_tail="$OPTARG"
@@ -126,6 +124,10 @@ do
 		;;
 	esac
 done
+
+# Rebuild src_rootfs after processing arch and rtfstype options
+src_rootfs=$WORKPATH/image/rootfs${arch}${rtfstype}.gz
+src_image=$WORKPATH/image/Image${arch}
 
 disk_array=()
 for disk in ${disks}
@@ -251,7 +253,7 @@ function start_qemu_aarch64_ext4()
 function start_vm()
 {
 	port=$((${ip_tail}+$port_range))
-	vm_ip="${ip_prefix}.${ip_tail}"
+	vm_ip="${ipprefix}${ip_tail}"
 	serial_log="${LOG_DIR}/vm_t${ip_tail}_d`date +%Y_%m_%d_%H_%M_%S`_$(basename ${src_image}).log"
 	mac=$(printf 'CE:AD:BB:EF:%02X:%02X\n' $((RANDOM%256)) $((RANDOM%256)))
 
@@ -267,22 +269,18 @@ function start_vm()
 
 	echo -e "${GREEN_COLOR}vm start ${vm_ip}"
 	local time_start=$(date +%s)
-	local time_end
-	local time_cost
 	for i in `seq 60`
 	do
 		echo -en "."
 		ping $vm_ip -c 1 -w 1 >/dev/null 2>&1
 		if [ $? -eq 0 ];then
-			time_cost=$(($(date +%s) - ${time_start}))
+			local time_cost=$(($(date +%s) - ${time_start}))
 			echo -e "vm start done (ip: ${ip_tail} time: ${time_cost})"
 			kernelinfo=`grep "Linux version" $serial_log | awk -F "Linux version" '{print $2}'`
 			echo -e "vm_${ip_tail}:$kernelinfo"
 			Commandline=`grep "Command line:" $serial_log | awk -F "Command line:" '{print $2}'`
 			echo -e "vm_${ip_tail}:$Commandline"
 			break
-		else
-			continue
 		fi
 	done
 	echo -e "${RES}"
@@ -302,7 +300,7 @@ function prepare()
 		cp $src_rootfs $vm_workdir/rootfs${arch}${rtfstype}.gz_${ip_tail}
 	
 	# 3.disk
-	if [ "${ori_file}X" != "X" ] ;then
+	if [ -n "${ori_file}" ] ;then
 		if [ "${ori_file}" != "qcow2" ] ;then
 			orgin_diskcfg
 		else
