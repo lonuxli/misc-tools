@@ -27,7 +27,12 @@ function usage()
 	-s	gdb debug 
 	-b	boot args
 	-f	disk file, not use the original file as disk
-	-x	disk file, use the original file as disk, -l, -d, -f is ignore
+	-x	qcow2 or disk file. Options:
+	        qcow2              use qcow2 format (default nvme device)
+	        qcow2:nvme         qcow2 with nvme device
+	        qcow2:scsi         qcow2 with scsi-hd device
+	        qcow2:virtio       qcow2 with virtio-blk device
+	        <filepath>         use the original file as disk, -l, -d, -f ignored
 
 	Example:
 	# add no para will start a qemu wit 1 scsi-mq 1G disk, ip is 1922.168.1.110, cpus=2, memory=2G
@@ -40,6 +45,10 @@ function usage()
 	$0 -i 122 -l 1G -d "scsi-mq scsi-mq scsi-mq scsi-mq scsi-mq scsi-mq"
 	# start the qemu with 1 scsi-mq disk sand 1 zns, each 4G.
 	$0 -i 122 -l 4G -d "scsi-mq zns"
+	# start the qemu with qcow2 nvme 4G disk.
+	$0 -i 122 -x qcow2 -l 4G
+	# start the qemu with qcow2 scsi 2G disk.
+	$0 -i 122 -x qcow2:scsi -l 2G
 EOF
 }
 
@@ -111,11 +120,13 @@ do
 		bootargs="$OPTARG"
 		;;
 	x)
-		if [ ${OPTARG} != "qcow2" ] ;then
-			ori_file="$OPTARG"
-		else
-			echo -e "${BLUE_COLOR}Use qcow format disk."
+		if [[ ${OPTARG} == qcow2* ]] ;then
 			ori_file="qcow2"
+			# Extract device type if specified (qcow2:nvme, qcow2:scsi, qcow2:virtio)
+			qcow2_dev=$(echo ${OPTARG} | awk -F ":" '{print $2}')
+			qcow2_dev=${qcow2_dev:-nvme}  # Default to nvme if not specified
+		else
+			ori_file="$OPTARG"
 		fi
 		;;
 
@@ -188,14 +199,23 @@ function orgin_diskcfg()
 
 function qcow2_diskcfg()
 {
-	#可以根据实际需求更改
-	#cfg_new="-drive file=$diskpath/disk_${ip_tail}_qcow2,if=none,format=qcow2,id=b_1 -device scsi-hd,drive=b_1,id=d_b_1,logical_block_size=8192,physical_block_size=16384"
-	#cfg_new="-drive file=$diskpath/disk_${ip_tail}_qcow2,if=none,format=qcow2,id=b_1 -device virtio-blk-pci,drive=b_1,id=d_b_1,logical_block_size=8192,physical_block_size=16384"
-	
-	#cfg_new="-drive file=$diskpath/disk_${ip_tail}_qcow2,if=none,format=qcow2,id=b_1 -device nvme,serial=deadbeef,drive=b_1,id=d_b_1,logical_block_size=8192,physical_block_size=16384"
-	cfg_new="-drive file=$diskpath/disk_${ip_tail}_qcow2,if=none,format=qcow2,id=b_1,cache=writeback -device nvme,serial=deadbeef,drive=b_1,id=d_b_1,logical_block_size=4096,physical_block_size=4096"
+	case ${qcow2_dev} in
+		nvme)
+			cfg_new="-drive file=$diskpath/disk_${ip_tail}_qcow2,if=none,format=qcow2,id=b_1,cache=writeback -device nvme,serial=deadbeef,drive=b_1,id=d_b_1,logical_block_size=4096,physical_block_size=4096"
+			;;
+		scsi)
+			cfg_new="-drive file=$diskpath/disk_${ip_tail}_qcow2,if=none,format=qcow2,id=b_1 -device scsi-hd,drive=b_1,id=d_b_1"
+			;;
+		virtio)
+			cfg_new="-drive file=$diskpath/disk_${ip_tail}_qcow2,if=none,format=qcow2,id=b_1 -device virtio-blk-pci,drive=b_1,id=d_b_1"
+			;;
+		*)
+			echo -e "${RED_COLOR}Error: qcow2 device type '$qcow2_dev' not supported. Use: nvme, scsi, or virtio${RES}"
+			exit 1
+			;;
+	esac
 	[ $(ls $diskpath/disk_${ip_tail}_qcow2  2>/dev/null | wc -l) -eq 1 ] && return
-	qemu-img create -f qcow2 $diskpath/disk_${ip_tail}_qcow2 1G
+	qemu-img create -f qcow2 $diskpath/disk_${ip_tail}_qcow2 ${disk_size}
 }
 
 function combine_creatfile()
