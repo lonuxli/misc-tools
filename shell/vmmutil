@@ -1,0 +1,414 @@
+#!/bin/bash
+
+
+#color define
+S_COLOR='\e[1;33m'
+E_COLOR='\e[1;31m'
+I_COLOR='\e[1;34m'
+L_COLOR='\e[1;36m'
+RES='\E[0m'
+
+qemu_prefix="qemu-"
+ipprefix="192.168.22."
+tailipmin=120
+tailipmax=125
+
+rootfspath=~/work/vm/image/vm
+diskpath=~/work/vm/image/vm/disks
+ramdpath=/tmp/ll_disk
+
+cmd_pre="echo pwd:\$PWD;export PATH=\$PATH:/hostshare/shell;"
+cmd_post="exit"
+
+
+function usage()
+{
+	cat <<- EOF
+	Usage: $0 [Options]
+	
+	start vm Options:
+	-a	cpu arch(default x86)
+	-g	rootfs filesystem type(xfs(default), ext4)
+	-d	disk type
+	-l	disk sizei(GB)
+	-m	memory size(GB)
+	-c	cpu nums
+	-z	kernel image
+	-r	rootfs file
+	-b	boot args
+	-f	disk file
+	-x      disk file, use the original file as disk, -l, -d, -f is ignore
+
+	mutil vm Options: 
+	-o	operation
+	-i	select ip 
+	-e	exec cmd
+	-t	loop sleep
+
+	For example:
+	vmmutil  -o start -i 123 -z arch/x86/boot/bzImage -d "scsi-mq scsi-mq scsi-mq" -l 4G -g ext4
+	vmmutil  -o start -i 123 -z arch/x86/boot/bzImage -d "scsi-mq scsi-mq" -l 1G -g ext4
+	vmmutil  -o start -i 123 -z arch/x86/boot/bzImage -d "scsi-mq zns" -l 4G
+	vmmutil  -o start -i 123 -z arch/x86/boot/bzImage -l 1G -g ext4
+	vmmutil  -o start -i 123 -z arch/x86/boot/bzImage -x /home/lilong/debug/dts/test.disk
+	vmmutil  -o start -i 123 -z arch/x86/boot/bzImage -x qcow2
+	vmstart -i 123 -z arch/x86/boot/bzImage -l 1G -g ext4 -s s
+
+EOF
+}
+
+while getopts o:i:e:t:d:x:a:g:l:f:m:c:z:r:s:b:h opt
+do
+	case ${opt} in
+	o)
+		operation="$OPTARG"
+		;;
+	i)
+		selectips="$OPTARG"
+		;;
+	e)
+		vm_runcmd="$OPTARG"
+		;;
+	t)
+		loopsleep="$OPTARG"
+		;;
+	d)
+		diskvmargs=""$OPTARG""
+		;;
+	a)
+		vmargs=${vmargs}" -a $OPTARG"
+		;;
+	x)
+		vmargs=${vmargs}" -x $OPTARG"
+		;;
+	g)
+		vmargs=${vmargs}" -g $OPTARG"
+		;;
+	l)
+		vmargs=${vmargs}" -l $OPTARG"
+		;;
+	f)
+		vmargs=${vmargs}" -f $OPTARG"
+		;;
+	m)
+		vmargs=${vmargs}" -m $OPTARG"
+		;;
+	c)
+		vmargs=${vmargs}" -c $OPTARG"
+		;;
+	z)
+		vmargs=${vmargs}" -z $OPTARG"
+		;;
+	r)
+		vmargs=${vmargs}" -r $OPTARG"
+		;;
+	s)
+		vmargs=${vmargs}" -r $OPTARG"
+		;;
+	b)
+		bootvmargs=""$OPTARG""
+		;;
+
+	h|?)
+		usage
+		exit 1
+		;;
+	esac
+done
+
+fun_mstart() {
+	
+	for element in ${seltails[@]}
+	do
+		echo "vm start iptail@$element vmargs@$vmargs disk@$diskvmargs boot@$bootvmargs"
+
+		if [ "$diskvmargs" != "" ] && [ "$bootvmargs" != "" ] ;then
+			vmstart -i $element $vmargs -d "$diskvmargs" -b "$bootvmargs" & >> /dev/null
+			continue
+		fi
+		if [ "$diskvmargs" == "" ] && [ "$bootvmargs" != "" ] ;then
+			vmstart -i $element $vmargs -b "$bootvmargs" & >> /dev/null
+			continue
+		fi
+		if [ "$diskvmargs" != "" ] && [ "$bootvmargs" == "" ] ;then
+			vmstart -i $element $vmargs -d "$diskvmargs" & >> /dev/null
+			continue
+		fi
+
+		vmstart -i $element $vmargs  & >> /dev/null
+	done
+}
+
+fun_mstop() {
+	local i n
+	n=${#ips[@]}
+        for (( i=0; i<$n; i++))
+	do
+		for element in ${seltails[@]}
+		do
+			if [ $ipprefix$element == ${ips[$i]} ] ;then
+				kill -9 ${pids[$i]} &
+				echo -e "${E_COLOR}Virtual Machine ${ips[$i]} Closed."
+				echo -e "${RES}"
+			fi
+		done
+	done
+}
+
+loginvm_run() {
+	local index status
+	index=$1
+	if [ "$vm_runcmd" == "" ] ;then
+		echo -e "${E_COLOR}Please use -e add cmd optation"
+		exit 1
+	fi
+
+	ping ${ips[$index]} -c 1 -W 1 > /dev/null
+	if [ $? == 0 ] ;then
+		echo -e "SSH ${ips[$index]}...... run: $vm_runcmd"
+		echo -e "${RES}"
+		sshpass -p "root" ssh root@${ips[$index]} -o StrictHostKeyChecking=no "$cmd_pre $vm_runcmd; $cmd_post" &
+		if [ $? != 0 ] ;then
+			echo -e "${E_COLOR}SSH login ${ips[$index]} faild."
+		fi
+	else
+		echo -e "${E_COLOR}Can't connecting to ${ips[$index]}"
+	fi
+	echo -e "${RES}"
+}
+
+# 串行登陆虚拟机执行指定命令并退出
+loginvm_cmd() {
+	local index status
+	index=$1
+	if [ "$vm_runcmd" == "" ] ;then
+		echo -e "${E_COLOR}Please use -e add cmd optation"
+		exit 1
+	fi
+
+	ping ${ips[$index]} -c 1 -W 1 > /dev/null
+	if [ $? == 0 ] ;then
+		echo -e "SSH ${ips[$index]}...... run: $vm_runcmd"
+		echo -e "${RES}"
+		sshpass -p "root" ssh root@${ips[$index]} -o StrictHostKeyChecking=no "$cmd_pre $vm_runcmd; $cmd_post"
+		if [ $? != 0 ] ;then
+			echo -e "${E_COLOR}SSH login ${ips[$index]} faild."
+		fi
+	else
+		echo -e "${E_COLOR}Can't connecting to ${ips[$index]}"
+	fi
+	echo -e "${RES}"
+}
+
+# 清理-i选中ip的sshpass登陆进程
+sshpass_clean() {
+	local lines count i ip pid
+	readarray -t lines < <(ps ux | grep sshpass | grep -v grep)
+	count=${#lines[@]}
+	for (( i=0; i<$count; i++))
+	do
+		ip=`echo ${lines[i]} | awk -F "root@" '{print $2}' | awk -F " " '{print $1}'`
+		for element in ${seltails[@]}
+		do
+			if [ $ipprefix$element == ${ip} ] ;then
+				pid=`echo ${lines[i]} | awk -F " " '{print $2}'`
+				kill -9 $pid
+			fi
+		done
+	done
+}
+
+fun_mrun() {
+	local i n
+	n=${#ips[@]}
+        for (( i=0; i<$n; i++))
+	do
+		for element in ${seltails[@]}
+		do
+			if [ $ipprefix$element == ${ips[$i]} ] ;then
+				loginvm_run $i
+				echo -e "${E_COLOR}Virtual Machine ${ips[$i]} login run shell complete."
+				echo -e "${RES}"
+			fi
+		done
+	done
+}
+
+fun_mcmd() {
+	local i n
+	n=${#ips[@]}
+        for (( i=0; i<$n; i++))
+	do
+		for element in ${seltails[@]}
+		do
+			if [ $ipprefix$element == ${ips[$i]} ] ;then
+				loginvm_cmd $i
+				echo -e "${E_COLOR}Virtual Machine ${ips[$i]} login exec cmd complete."
+				echo -e "${RES}"
+			fi
+		done
+	done
+}
+
+fun_mclean() {
+	local i n
+	n=${#ips[@]}
+	for element in ${seltails[@]}
+	do
+		for (( i=0; i<$n; i++))
+		do
+			if [ $ipprefix$element == ${ips[$i]} ] ;then
+				continue 2
+			fi
+		done
+
+		rm $rootfspath/rootfs*_$element -f
+		rm $diskpath/disk_${element}* -f
+		rm $ramdpath/disk_${element}* -f
+		echo -e "${E_COLOR}Virtual Machine ${ips[$i]} host file clean complete."
+		echo -e "${RES}"
+	done
+}
+
+
+
+fun_getvm() {
+	unset lines
+	unset types
+	unset ips
+	unset uptime
+	unset status
+	unset sshs
+	local i
+	readarray -t lines < <(ps ux | grep ${qemu_prefix} | grep -v grep)
+	count=${#lines[@]}
+	echo -e "${S_COLOR}---------------------------------------------------------------------------"
+	echo -e "You have ${E_COLOR}$count${S_COLOR} virtual machines running >>"
+	printf "%-15s| %-4s| %-10s| %-10s| %-12s| %-4s|\n" "Network" "Sel" "Arch" "PID" "UpTime" "SSH"
+	for (( i=0; i<$count; i++))
+	do
+		types[$i]=`echo ${lines[i]} | awk -F "system-" '{print $2}' | awk -F " " '{print $1}'`
+		pids[$i]=`echo ${lines[i]} | awk -F " " '{print $2}'`
+		ips[$i]=`echo ${lines[i]} | awk -F "IP=" '{print $2}' | awk -F " " '{print $1}'`
+		ports[$i]=`echo ${lines[i]} | awk -F "localhost:" '{print $2}' | awk -F "," '{print $1}'`
+		#uptime[$i]=`ps -o etime -p ${pids[$i]} | grep -v ELAPSED`
+		uptime[$i]="00"
+		#sshs[i]=`ps ux | grep "ssh " | grep -v grep | grep -v sshpass | grep ${ips[$i]} |wc -l`
+		num="$(( $i + 1 ))"
+		printf "${L_COLOR}%-15s${S_COLOR}|${L_COLOR} %-4d${S_COLOR}| %-10s| %-10s| %-12s| %-4d|\n" ${ips[$i]} $num ${types[$i]} ${pids[$i]} ${uptime[$i]} ${sshs[$i]} 
+	done
+	echo -e "${S_COLOR}---------------------------------------------------------------------------"
+}
+
+func_validip() {
+	local tail=$1
+	[[ $tail < $tailipmin ]] && echo -e "Invalid ip tail $tail" && return 1
+	[[ $tail > $tailipmax ]] && echo -e "Invalid ip tail $tail" && return 1
+	return 0
+}
+
+func_sel_ip() {
+	local i j k istart iend val
+	input=$1
+	readarray -t ops < <(echo $input | sed 's/ //g' | sed 's/,/\n/g')
+	nops=${#ops[@]}
+	k=0
+	for (( i=0; i<$nops; i++))
+	do
+		val=`echo ${ops[$i]} | sed 's/,//g'`
+		echo $val | grep "-" > /dev/null
+		if [ $? == 0 ] ;then
+			istart=`echo $val | awk -F "-" '{print $1}'`
+			iend=`echo $val | awk -F "-" '{print $2}'`
+			#echo "$val | $istart | $iend"
+			for (( j=$istart; j<=$iend; j++))
+			do
+				func_validip $j
+				[[ $? == 0 ]] && seltails[k]=$j; k="$(( $k + 1 ))"
+			done
+		else
+			func_validip $val
+			[[ $? == 0 ]] && seltails[k]=$val; k="$(( $k + 1 ))"
+		fi
+	done
+}
+
+fun_mloopcmd() {
+	local i
+	fun_mcmd
+	if [ "${loopsleep}" == "" ] ;then
+		exit 0
+	else
+		while true; do
+			echo "wait ....$loopsleep"
+			sleep  $loopsleep
+			printf "\033c" #clear terminal
+
+			fun_getvm
+			fun_mcmd
+
+			for (( i=0; i<10; i++))
+			do
+				read -r -t 1 -N 1 input
+				case $input in
+					[eE]|[qQ])
+					break 2
+					;;
+				esac
+			done
+		done
+	fi
+	exit 0
+}
+
+fun_main() {
+	# start 启动虚拟机
+	if [ "$operation" == "start" ] ;then
+		func_sel_ip $selectips
+		fun_mstart	
+		exit 0
+	fi
+
+	# stop 停止虚拟机
+	if [ "$operation" == "stop" ] ;then
+		func_sel_ip $selectips
+		fun_getvm
+		fun_mstop
+		sshpass_clean
+		exit 0
+	fi
+
+	# run 在虚拟机上运行命令
+	if [ "$operation" == "run" ] ;then
+		fun_getvm
+		func_sel_ip $selectips
+		fun_mrun
+		exit 0
+	fi
+
+	# cmd 在虚拟机上运行自定义命令
+	if [ "$operation" == "cmd" ] ;then
+		fun_getvm
+		func_sel_ip $selectips
+		fun_mloopcmd
+		exit 0
+	fi
+
+	# clean 清理虚拟机在宿主机上默认文件
+	if [ "$operation" == "clean" ] ;then
+		fun_getvm
+		func_sel_ip $selectips
+		fun_mclean
+		exit 0
+	fi
+
+	if [ "$operation" == "" ] ;then
+		fun_getvm
+		exit 0
+	fi
+
+	echo -e "Please select correct operation use -o."
+}
+
+fun_main
+
