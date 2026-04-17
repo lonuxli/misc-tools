@@ -14,8 +14,8 @@ function usage()
 	Usage: $0 [Options]
 	
 	start vm Options:
-	-a	cpu arch(default x86)
-	-g	rootfs filesystem type(xfs(default), ext4)
+	-a	cpu arch
+	-g	rootfs filesystem type
 	-d	disk type
 	-l	disk sizei(GB)
 	-m	memory size(GB)

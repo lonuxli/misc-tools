@@ -8,6 +8,10 @@ chgexit='[EXIT (-_-) ]'
 gotoup='[Go up <<<< ]'
 sshvm='vm login'
 killvm='vm close'
+# close vm & remove disk file
+killvm_clean='vm clean'
+# close vm & remove disk file & rootfs
+killvm_rm_all='vm delete'
 restartvm='vm restart'
 moreinfo='vm info'
 vmcore='save core'
@@ -173,7 +177,7 @@ fun_vmctrl() {
 			${types[$index]} ${pids[$index]} ${uptime[$index]} ${status[$index]} ${sshs[$index]}
 		echo -e "${YELLOW_COLOR}---------------------------------------------------------------------------"
 		echo -e "Plese enter operation number:"
-		select vm in "${chgexit}" "${gotoup}" "${sshvm}" "${killvm}" "${moreinfo}" "${vmlog}" "${vmsavelog}" "${vmcore}";
+		select vm in "${chgexit}" "${gotoup}" "${sshvm}" "${killvm}" "${killvm_clean}" "${vmlog}" "${moreinfo}" "${killvm_rm_all}" "${vmsavelog}" "${vmcore}";
 		do
 			case $vm in
 				"${chgexit}")
@@ -201,6 +205,23 @@ fun_vmctrl() {
 				"${killvm}")
 					local tailip=`echo ${ips[$index]} | awk -F "." '{print $4}'`
 					vmmutil -o stop -i ${tailip}
+					break 2
+					;;
+				"${killvm_clean}")
+					local tailip=`echo ${ips[$index]} | awk -F "." '{print $4}'`
+					vmmutil -o stop -i ${tailip}
+					rm -f $diskpath/disk_${tailip}*
+					rm -f ${vm_workdir}/disks/disk_${tailip}*
+					echo -e "${RED_COLOR}Virtual Machine ${ips[$index]} closed and cleaned.${RES}"
+					break 2
+					;;
+				"${killvm_rm_all}")
+					local tailip=`echo ${ips[$index]} | awk -F "." '{print $4}'`
+					vmmutil -o stop -i ${tailip}
+					rm -f $rootfspath/rootfs*_${tailip}
+					rm -f $diskpath/disk_${tailip}*
+					rm -f ${vm_workdir}/disks/disk_${tailip}*
+					echo -e "${RED_COLOR}Virtual Machine ${ips[$index]} closed and cleaned rootfs & disk. ${RES}"
 					break 2
 					;;
 				"${moreinfo}")
