@@ -32,11 +32,11 @@ port_range=5555              # port range base
 
 # -------- DIRECTORY PATHS (共用) --------
 CPATH=`pwd`
-WORKPATH=~/work/vm
+WORKPATH=$HOME/work/vm
 vm_workdir=$WORKPATH/image/vm
 rootfspath=$vm_workdir
 arch_image=$WORKPATH/image/Image${arch}
-user_image="~/gitwork/linux-next/arch/arm64/boot/Image"
+user_image=$HOME/gitwork/linux-next/arch/arm64/boot/Image
 src_rootfs=$WORKPATH/image/rootfs${arch}${rtfstype}.gz
 fs_path=$vm_workdir/fspath
 ksdir=$WORKPATH/image/ksnapshot

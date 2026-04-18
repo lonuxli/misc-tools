@@ -150,7 +150,6 @@ arch_image=$WORKPATH/image/Image${arch}
 # 1. Current kernel source directory
 # 2. user_image (user custom from config)
 # 3. arch_image (architecture default)
-src_image=""
 
 # Check if current directory is a kernel source tree
 if [ -f "./Makefile" ] && [ -d "./arch" ] ;then
@@ -338,11 +337,12 @@ function start_vm()
 
 	echo -e "${GREEN_COLOR}vm start ${vm_ip}"
 	local time_start=$(date +%s)
-	for i in `seq 60`
+	for i in `seq 10`
 	do
 		echo -en "."
 		ping $vm_ip -c 1 -w 1 >/dev/null 2>&1
 		if [ $? -eq 0 ];then
+			echo
 			local time_cost=$(($(date +%s) - ${time_start}))
 			echo -e "vm start done (ip: ${ip_tail} time: ${time_cost})"
 			kernelinfo=`grep "Linux version" $serial_log | awk -F "Linux version" '{print $2}'`
@@ -362,6 +362,7 @@ function prepare()
 	mkdir -p $diskpath
 
 	# 1.bZimage
+	echo -e "${BLUE_COLOR}kernel image: $src_image.${RES}"
 	cp $src_image $vm_workdir/Image${arch}_${ip_tail}
 	
 	# 2.rootfs
