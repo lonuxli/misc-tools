@@ -15,6 +15,7 @@ PINK_COLOR='\E[1;35m'        # Pink
 RES='\E[0m'                  # Reset
 
 # -------- NETWORK CONFIGURATION (共用) --------
+vm_br="br_ll"
 ipprefix="192.168.22."
 qemu_prefix="qemu-"
 tailipmin=120

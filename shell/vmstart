@@ -5,7 +5,7 @@ source $(dirname "$0")/vm_config.sh
 
 # vmstart specific configuration
 cfg_new=""
-ip_tail=120
+ip_tail=""
 disk_file="notexit"
 src_image=""  # Will be set based on user_image or arch_image
 
@@ -136,6 +136,11 @@ do
 		;;
 	esac
 done
+
+if [ -z "$ip_tail" ] ;then
+	echo -e "${RED_COLOR}$0: please use -i options select ip tail, ip tail range [$tailipmin, $tailipmax].${RES}"
+	exit 1
+fi
 
 # Rebuild paths after processing arch and rtfstype options
 src_rootfs=$WORKPATH/image/rootfs${arch}${rtfstype}.gz
@@ -304,8 +309,8 @@ function start_qemu_aarch64_ext4()
 		-device virtio-9p-pci,id=fs0,fsdev=fsdev0,mount_tag=hostshare \
 		-device virtio-scsi-pci \
 		${cfg_new} \
-		-device virtio-net-pci,netdev=net0 \
-		-netdev tap,id=net0,ifname=tap0,script=no,downscript=no \
+		-device virtio-net-pci,netdev=net0,mac=$mac \
+		-netdev bridge,id=net0,br=$vm_br \
 		-qmp tcp:localhost:$port,server,nowait \
 		-monitor unix:${socketx}/socket_${ip_tail},server,nowait \
 		-virtfs local,path=${fs_path},mount_tag=modules,security_model=mapped-file \
